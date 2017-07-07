@@ -27,7 +27,7 @@ testBenchmark() {
 
    sh clean.sh
    rm -f seqf.hs
-   #rm -f parf.hs
+   rm -f parf.hs
    rm -f parf
    rm -f seqf
 }
