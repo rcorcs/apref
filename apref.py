@@ -9,6 +9,10 @@ from sympy import solve, Symbol, sympify
 
 debugMode=False
 
+numericTypes = ['Integer','Rational','Floating','RealFloat','Num','Integral','Fractional']
+booleanTypes = ['Boolean']
+supportedTypes = numericTypes
+
 def setDebugMode(state):
    global debugMode
    debugMode = state
@@ -310,7 +314,19 @@ def rewriteTerm(expr,arg,solvedHop):
       term = term.strip()
    return term
 
-def rewriteMonoidCode(type,base,recursion):
+def hasUseOf(term, arg):
+   return (len(re.findall('[^_A-Za-z0-9]'+arg+'[^_A-Za-z0-9]', term))>0)
+
+def isConstantFunction(func):
+   tmp = func.split('=')
+   if len(tmp)==2:
+      args = tmp[0].split()[1:]
+      term = tmp[1].strip()
+      return all([ (not hasUseOf(term, arg)) for arg in args ])
+   else:
+      return False
+
+def rewriteMonoidCode(type,base,recursion,optimizeConstants=True):
    if debugMode:
       print 'Monoid-based recursive function'
    binop = recursion['operators'][0]
@@ -362,7 +378,7 @@ def rewriteMonoidCode(type,base,recursion):
    rewritten += name+' '+recursion['arg']+' = let '+kvar+' = '+hop_k+' in '+s
    return rewritten
 
-def rewriteSemiringCode(type,base,recursion):
+def rewriteSemiringCode(type,base,recursion,useScan=True,optimizeConstants=True):
    if debugMode:
       print 'Semiring-based recursive function'
    binopAdd = recursion['operators'][0]
@@ -396,82 +412,211 @@ def rewriteSemiringCode(type,base,recursion):
 
    terms = [rewriteTerm(term,recursion['arg'],solvedHopComposition) for term in recursion['exprs']]
 
+   constTerms = [False for _ in terms]
+
    if debugMode:
      print 'Rewriting Code'
    s = ''
    for t in xrange(len(terms)):
       if terms[t]:
-         rewritten += name+'_g_'+str(t+1)+' _HOP_i = '+terms[t]+'\n'
-   
+         func = name+'_g_'+str(t+1)+' _HOP_i = '+terms[t]
+         rewritten += str(func)+'\n'
+         constTerms[t] = optimizeConstants and isConstantFunction(func)
+
+   if debugMode:
+      print 'Constant terms:',constTerms
+
    betas = [False,False]
    for t in [0,1]:
       if (terms[2] and terms[t]) or terms[3]:
          betas[t] = True
-         s = name+'_BETA_'+str(t+1)+' _BETA_k _BETA_i = '
-         if terms[2] and terms[t]:
-            s += '(foldr1 ('+binopMult+') (map '+name+'_g_3 (reverse [(_BETA_i+1).._BETA_k])))'
-            s += binopMult+'('+name+'_g_'+str(t+1)+' _BETA_i)'
-         if terms[3]:
-            s += binopMult+'(foldr1 ('+binopMult+') (map '+name+'_g_4 [(_BETA_i+1).._BETA_k]))'
+         if useScan: 
+            vArg = '_BETA_v'
+            if (constTerms[2] or (not terms[2])):
+               vArg = ''
+            wArg = '_BETA_w'
+            if constTerms[3] or (not terms[3]):
+               wArg = ''
+            s = name+'_BETA_'+str(t+1)+' '+vArg+' '+wArg+' _BETA_k _BETA_i = '
+            if terms[2] and terms[t]:
+               if constTerms[2]:
+                  if (type['image'] in numericTypes) and binopMult=='*':
+                     s += '(('+name+'_g_3 0)^_BETA_i)'
+                  elif (type['image'] in booleanTypes):
+                     s += '('+name+'_g_3 0)'
+                  else:
+                     s += '(_BETA_v!!_BETA_i)'
+               else:
+                  s += '(_BETA_v!!_BETA_i)'
+               s += binopMult+'('+name+'_g_'+str(t+1)+' _BETA_i)'
+            if terms[3]:
+               if constTerms[3]:
+                  if (type['image'] in numericTypes) and binopMult=='*':
+                     s += binopMult+'(('+name+'_g_3 0)^_BETA_i)'
+                  elif (type['image'] in booleanTypes):
+                     s += binopMult+'('+name+'_g_4 0)'
+                  else:
+                     s += binopMult+'(_BETA_w!!(_BETA_K-_BETA_i))'
+               else:
+                  s += binopMult+'(_BETA_w!!(_BETA_K-_BETA_i))'
+         else:
+            s = name+'_BETA_'+str(t+1)+' _BETA_k _BETA_i = '
+            if terms[2] and terms[t]:
+               s += '(foldr1 ('+binopMult+') (map '+name+'_g_3 (reverse [(_BETA_i+1).._BETA_k])))'
+               s += binopMult+'('+name+'_g_'+str(t+1)+' _BETA_i)'
+            if terms[3]:
+               s += binopMult+'(foldr1 ('+binopMult+') (map '+name+'_g_4 [(_BETA_i+1).._BETA_k]))'
          rewritten += s+'\n'
 
-   phi_1 = False
-   if terms[0] or betas[0]:
-      phi_1 = True
-      s = name+'_PHI_1 k = '
-      if terms[0]:
-         s += '('+name+'_g_1 k) '
-      if terms[0] and betas[0]:
-         s += binopAdd+' '
-      if betas[0]:
-         s += '(foldr1 ('+binopAdd+') (map ('+name+'_BETA_1 k) (reverse [1..(k-1)])))'
-      rewritten += s+'\n'
+   if useScan:
+      vArg = 'v'
+      if constTerms[2] or (not terms[2]):
+         vArg = ''
+      wArg = 'w'
+      if constTerms[3] or (not terms[3]):
+         wArg = ''
 
-   phi_2 = False
-   if terms[1] or betas[1]:
-      phi_2 = True
-      s = name+'_PHI_2 k = '
-      if betas[1]:
-         s += '(foldr1 ('+binopAdd+') (map ('+name+'_BETA_2 k) [1..(k-1)]))'
-      if terms[1] and betas[1]:
-         s += ' '+binopAdd+' '
-      if terms[1]:
-         s += '('+name+'_g_2 k)'
-      rewritten += s+'\n'
+      phi_1 = False
+      if terms[0] or betas[0]:
+         phi_1 = True
+         s = name+'_PHI_1 '+vArg+' '+wArg+' k = '
+         if terms[0]:
+            s += '('+name+'_g_1 k) '
+         if terms[0] and betas[0]:
+            s += binopAdd+' '
+         if betas[0]:
+            s += '(foldr1 ('+binopAdd+') (map ('+name+'_BETA_1 '+vArg+' '+wArg+' k) (reverse [1..(k-1)])))'
+         rewritten += s+'\n'
 
-   phi_3 = False
-   if terms[2]:
-      phi_3 = True
-      rewritten += name+'_PHI_3 k = (foldr1 ('+binopMult+') (map '+name+'_g_3 (reverse [1..k])))\n'
+      phi_2 = False
+      if terms[1] or betas[1]:
+         phi_2 = True
+         s = name+'_PHI_2 '+vArg+' '+wArg+' k = '
+         if betas[1]:
+            s += '(foldr1 ('+binopAdd+') (map ('+name+'_BETA_2 '+vArg+' '+wArg+' k) [1..(k-1)]))'
+         if terms[1] and betas[1]:
+            s += ' '+binopAdd+' '
+         if terms[1]:
+            s += '('+name+'_g_2 k)'
+         rewritten += s+'\n'
 
-   phi_4 = False
-   if terms[3]:
-      phi_4 = True
-      rewritten += name+'_PHI_4 k = (foldr1 ('+binopMult+') (map '+name+'_g_4 [1..k]))\n'
+      phi_3 = False
+      if terms[2]:
+         phi_3 = True
+         readV1AndMult = '(v!!1)'+binopMult
+         if constTerms[2]:
+            if (type['image'] in numericTypes) and binopMult=='*':
+               readV1AndMult = '('+name+'_g_3 0)'+binopMult
+            elif (type['image'] in booleanTypes):
+               readV1AndMult = ''
+            rewritten += name+'_PHI_3 '+vArg+' '+wArg+' k = '+readV1AndMult+'('+name+'_g_3 1)\n'
+         else:
+            rewritten += name+'_PHI_3 '+vArg+' '+wArg+' k = (v!!1)'+binopMult+'('+name+'_g_3 1)\n'
 
-   kvar = 'k'
-   if recursion['arg']==kvar:
-      kvar = name+'_k'
+      phi_4 = False
+      if terms[3]:
+         phi_4 = True
+         readWK1AndMult = binopMult+'(w!!(k-1))'
+         if constTerms[3]:
+            if (type['image'] in numericTypes) and binopMult=='*':
+               readWK1AndMult = binopMult+'('+name+'_g_4 0)'
+            elif (type['image'] in booleanTypes):
+               readWK1AndMult = ''
+            rewritten += name+'_PHI_4 '+vArg+' '+wArg+' k = ('+name+'_g_4 k)'+readWK1AndMult+'\n'
+         else:
+            rewritten += name+'_PHI_4 '+vArg+' '+wArg+' k = ('+name+'_g_4 k)'+binopMult+'(w!!(k-1))\n'
 
-   s = name+' '+recursion['arg']+' = '
-   s += 'let '+kvar+' = '+hop_k+' in '
-   if phi_1:
-      s += '('+name+'_PHI_1 '+kvar+') '+binopAdd+' '
-   if phi_3:
-      s += '('+name+'_PHI_3 '+kvar+')'+binopMult
-   s += '('+base['expr']+')'
-   if phi_4:
-      s += binopMult+'('+name+'_PHI_4 '+kvar+') '
-   if phi_2:
-      s += binopAdd+' ('+name+'_PHI_2 '+kvar+')'
-   rewritten += s
+      kvar = 'k'
+      if recursion['arg']==kvar:
+         kvar = name+'_k'
+      vvar = 'v'
+      if recursion['arg']==vvar:
+         vvar = name+'_v'
+      if constTerms[2] or (not terms[2]):
+         vvar = ''
+      wvar = 'w'
+      if recursion['arg']==wvar:
+         wvar = name+'_w'
+      if constTerms[3] or (not terms[3]):
+         wvar = ''
+
+      s = name+' '+recursion['arg']+' = '
+      s += 'let '+kvar+' = '+hop_k+'\n'
+      if terms[2] and (not constTerms[2]):
+         s += ' '+vvar+' = scanr1 ('+binopMult+') (map '+name+'_g_3 (reverse [2..'+kvar+']))\n'
+      if terms[3] and (not constTerms[3]):
+         s += ' '+wvar+' = scanr1 ('+binopMult+') (map '+name+'_g_4 [2..'+kvar+'])\n'
+      s += ' in '
+      if phi_1:
+         s += '('+name+'_PHI_1 '+vvar+' '+wvar+' '+kvar+')'+binopAdd
+      if phi_3:
+         s += '('+name+'_PHI_3 '+vvar+' '+wvar+' '+kvar+')'+binopMult
+      s += '('+base['expr']+')'
+      if phi_4:
+         s += binopMult+'('+name+'_PHI_4 '+vvar+' '+wvar+' '+kvar+')'
+      if phi_2:
+         s += binopAdd+'('+name+'_PHI_2 '+vvar+' '+wvar+' '+kvar+')'
+      rewritten += s
+   else:
+      phi_1 = False
+      if terms[0] or betas[0]:
+         phi_1 = True
+         s = name+'_PHI_1 k = '
+         if terms[0]:
+            s += '('+name+'_g_1 k) '
+         if terms[0] and betas[0]:
+            s += binopAdd+' '
+         if betas[0]:
+            s += '(foldr1 ('+binopAdd+') (map ('+name+'_BETA_1 k) (reverse [1..(k-1)])))'
+         rewritten += s+'\n'
+
+      phi_2 = False
+      if terms[1] or betas[1]:
+         phi_2 = True
+         s = name+'_PHI_2 k = '
+         if betas[1]:
+            s += '(foldr1 ('+binopAdd+') (map ('+name+'_BETA_2 k) [1..(k-1)]))'
+         if terms[1] and betas[1]:
+            s += ' '+binopAdd+' '
+         if terms[1]:
+            s += '('+name+'_g_2 k)'
+         rewritten += s+'\n'
+
+      phi_3 = False
+      if terms[2]:
+         phi_3 = True
+         rewritten += name+'_PHI_3 k = (foldr1 ('+binopMult+') (map '+name+'_g_3 (reverse [1..k])))\n'
+
+      phi_4 = False
+      if terms[3]:
+         phi_4 = True
+         rewritten += name+'_PHI_4 k = (foldr1 ('+binopMult+') (map '+name+'_g_4 [1..k]))\n'
+
+      kvar = 'k'
+      if recursion['arg']==kvar:
+         kvar = name+'_k'
+
+      s = name+' '+recursion['arg']+' = '
+      s += 'let '+kvar+' = '+hop_k+' in '
+      if phi_1:
+         s += '('+name+'_PHI_1 '+kvar+')'+binopAdd
+      if phi_3:
+         s += '('+name+'_PHI_3 '+kvar+')'+binopMult
+      s += '('+base['expr']+')'
+      if phi_4:
+         s += binopMult+'('+name+'_PHI_4 '+kvar+')'
+      if phi_2:
+         s += binopAdd+'('+name+'_PHI_2 '+kvar+')'
+      rewritten += s
+   while '  ' in rewritten:
+      rewritten = rewritten.replace('  ',' ')
    return rewritten
 
-def rewriteCode(type,base,recursion):
+def rewriteCode(type,base,recursion,useScan=True,optimizeConstants=True):
    if recursion['algebraic-type']=='monoid':
       return rewriteMonoidCode(type,base,recursion)
    elif recursion['algebraic-type']=='semiring':
-      return rewriteSemiringCode(type,base,recursion)
+      return rewriteSemiringCode(type,base,recursion,useScan,optimizeConstants)
    else:
       return None
 
@@ -479,9 +624,7 @@ def hasUnsupportedConstructions(code):
    keywords = ['let','where','case']
    return any([ len(re.findall('[^_A-Za-z0-9]'+kw+'[^_A-Za-z0-9]', code))>0 for kw in keywords])
 
-
-supportedTypes = ['Integer','Rational','Floating','RealFloat','Num','Integral','Fractional']
-def parallelize(code):
+def parallelize(code,useScan=True,optimizeConstants=True):
    name = None
    type = None
    base = None
@@ -538,6 +681,6 @@ def parallelize(code):
             print 'ERROR: Multiple recursive calls to function '+name
             print line
             sys.exit(0)
-   rewritten = rewriteCode(type,base,recursion)
+   rewritten = rewriteCode(type,base,recursion,useScan,optimizeConstants)
    return rewritten
 

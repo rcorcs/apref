@@ -17,10 +17,10 @@ if __name__=='__main__':
    #                       f 1 = 1
    #                       f n = (1+1) * f(n-1) + n''')
 
-   #print parallelize('''f :: Rational -> Rational
-   #                       f 0 = 2000
-   #                       f n = (1 + 0.005) * f(n-1) + 100''')
-   #print ''
+   print parallelize('''f :: Rational -> Rational
+                          f 0 = 2000
+                          f n = (1 + 0.005) * f(n-1) + 100''',True,True)
+   print ''
 
    #print parallelize('''f :: Rational -> Rational
    #                       f 0 = 2000
