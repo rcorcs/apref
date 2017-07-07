@@ -358,7 +358,9 @@ def rewriteMonoidCode(type,base,recursion,optimizeConstants=True):
    solvedHopComposition = inverse(base['arg']+' = '+kComposedHop, '_HOP_k')
    if debugMode:
       print 'solved k-composed hop:',solvedHopComposition
-
+   #sanity check
+   if str(solvedHopComposition).split('=')[0].strip()!='_HOP_k':
+      return None
    hop_k = str(solvedHopComposition).split('=')[1].strip()
    if debugMode:
       print 'hop_k:','('+hop_k+')'
@@ -394,8 +396,8 @@ def rewriteMonoidCode(type,base,recursion,optimizeConstants=True):
       s += ' '+binop+' ('+foldr1+' ('+binop+') (map '+name+'_g_2 [1..'+kvar+']))'
 
    #rewritten += name+' :: '+type['domain']+' -> '+type['image']+'\n'
-   rewritten += type['src']
-   rewritten += base['src']
+   rewritten += type['src'].strip()+'\n'
+   rewritten += base['src'].strip()+'\n'
    rewritten += name+' '+recursion['arg']+' = let '+kvar+' = '+hop_k+' in '+s
    return rewritten
 
@@ -415,7 +417,9 @@ def rewriteSemiringCode(type,base,recursion,useScan=True,optimizeConstants=True)
    solvedHopComposition = inverse(base['arg']+' = '+kComposedHop, '_HOP_k')
    if debugMode:
       print 'solved k-composed hop:',solvedHopComposition
-
+   #sanity check
+   if str(solvedHopComposition).split('=')[0].strip()!='_HOP_k':
+      return None
    hop_k = str(solvedHopComposition).split('=')[1].strip()
    if debugMode:
       print 'hop_k:','('+hop_k+')'
@@ -597,8 +601,8 @@ def rewriteSemiringCode(type,base,recursion,useScan=True,optimizeConstants=True)
          wvar = ''
 
       #rewritten += name+' :: '+type['domain']+' -> '+type['image']+'\n'
-      rewritten += type['src']
-      rewritten += base['src']
+      rewritten += type['src'].strip()+'\n'
+      rewritten += base['src'].strip()+'\n'
       s = name+' '+recursion['arg']+' = '
       s += 'let '+kvar+' = '+hop_k
       if terms[2] and ((not constTerms[2]) or (not eliminateVScan)):
@@ -657,8 +661,8 @@ def rewriteSemiringCode(type,base,recursion,useScan=True,optimizeConstants=True)
          kvar = name+'_k'
 
       #rewritten += name+' :: '+type['domain']+' -> '+type['image']+'\n'
-      rewritten += type['src']
-      rewritten += base['src']
+      rewritten += type['src'].strip()+'\n'
+      rewritten += base['src'].strip()+'\n'
       s = name+' '+recursion['arg']+' = '
       s += 'let '+kvar+' = '+hop_k+' in '
       if phi_1:
@@ -731,7 +735,7 @@ def parallelize(code,useScan=True,optimizeConstants=True):
             #sanity check
             assert recursion['name']==type['name'],'ERROR: function '+name+' mismatch with:\n>>\t'+line.strip()
             recursion['src'] = linesrc+'\n'
-   rewritten += rewriteCode(type,base,recursion,useScan,optimizeConstants)
+   rewritten = rewriteCode(type,base,recursion,useScan,optimizeConstants)
    return rewritten
 
 prologue = '''
