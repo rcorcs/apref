@@ -9,13 +9,25 @@ from sympy import solve, Symbol, sympify
 
 debugMode=False
 
+foldr1 = 'foldr1'
+
 numericTypes = ['Integer','Rational','Floating','RealFloat','Num','Integral','Fractional']
 booleanTypes = ['Boolean']
-supportedTypes = numericTypes
+supportedTypes = ['Integer']
 
 def setDebugMode(state):
    global debugMode
    debugMode = state
+
+def setFoldr1(cmd):
+  global foldr1
+  foldr1 = cmd
+
+def getFoldr1():
+  global foldr1
+  return foldr1
+
+
 
 def inverse(string, left_string=None):
    string = '-' + string
@@ -93,9 +105,8 @@ def parseTypeDef(code):
    if '::' in code and '->' in code:
       name = code.split('::')[0].strip()
       tmp = code.split('::')[1].split('->')
-      if len(tmp)>2:
-         if debugMode:
-            print 'ERROR: unsupported definition: ',code
+      #assert len(tmp)==2, 'ERROR: unsupported definition: '+code.strip()
+      if len(tmp)!=2:
          return None
       domain = tmp[0].strip()
       image = tmp[1].strip()
@@ -107,15 +118,16 @@ def parseTypeDef(code):
    return type
 
 def countRecursiveCalls(name, expr):
-   recursiveCallMatches = re.findall('[^_A-Za-z0-9]'+name+'[ \t]*\(', expr)
+   recursiveCallMatches = list(re.findall('[^_A-Za-z0-9]'+name+'[ \t]*\(', expr))
+   recursiveCallMatches.extend(list(re.findall('^'+name+'[ \t]*\(', expr)))
    return len(recursiveCallMatches)
 
 def parseRecursiveBase(code):
    left = code.split('=')[0].split()
+   #assert len(left)==2, 'ERROR: Expected function with one argument.\n'+code.strip()
    if len(left)!=2:
-      print 'ERROR: Expected function with one argument.'
-      print code.strip()
       return None
+
    name = left[0].strip()
    arg = left[1].strip()
    expr = code.split('=')[1].strip()
@@ -131,15 +143,21 @@ def parseRecursion(code):
    g_4 = None
 
    left = code.split('=')[0].split()
+   #assert len(left)==2, 'ERROR: Expected function with one argument.\n'+code.strip()
    if len(left)!=2:
-      print 'ERROR: Expected function with one argument.'
-      print code.strip()
       return None
    name = left[0].strip()
    arg = left[1].strip()
 
    right = code.split('=')[1].strip()
-   for m in re.finditer('[^_A-Za-z0-9]'+name+'[ \t]*\(', right):
+   rexpr = None
+   if len(re.findall('[^_A-Za-z0-9]'+name+'[ \t]*\(', right))>0:
+      rexpr = '[^_A-Za-z0-9]'+name+'[ \t]*\('
+   if len(re.findall('^'+name+'[ \t]*\(', right))>0:
+      rexpr = '^'+name+'[ \t]*\('
+   if rexpr==None:
+      return None
+   for m in re.finditer(rexpr, right):
       endRecursiveCall = findCloseChar(right, m.end(0), '(', ')')
       lexpr = right[:m.start(0)].strip()
       rexpr = right[endRecursiveCall:].strip()
@@ -251,8 +269,8 @@ def parseRecursion(code):
                print 'g_2('+arg+') = '+rexpr[g2idx+len(rops[1]):].strip()
             g_2 = rexpr[g2idx+len(rops[1]):].strip()
             if debugMode:
-               print 'g_4('+arg+') = '+rexpr[len(rops[0]):g2idx-1].strip()
-            g_4 = rexpr[len(rops[0]):g2idx-1].strip()
+               print 'g_4('+arg+') = '+rexpr[len(rops[0]):g2idx].strip()
+            g_4 = rexpr[len(rops[0]):g2idx].strip()
          else:
             g_2 = rexpr.strip()[len(rops[0]):].strip()
             if debugMode:
@@ -367,14 +385,17 @@ def rewriteMonoidCode(type,base,recursion,optimizeConstants=True):
 
    if terms[0]:
       rewritten += name+'_g_1 _HOP_i = '+terms[0]+'\n'
-      s += '(foldr1 ('+binop+') (map '+name+'_g_1 (reverse [1..'+kvar+']))) '+binop+' '
+      s += '('+foldr1+' ('+binop+') (map '+name+'_g_1 (reverse [1..'+kvar+']))) '+binop+' '
 
    s += base['expr']
 
    if terms[1]:
       rewritten += name+'_g_2 _HOP_i = '+terms[1]+'\n'
-      s += ' '+binop+' (foldr1 ('+binop+') (map '+name+'_g_2 [1..'+kvar+']))'
+      s += ' '+binop+' ('+foldr1+' ('+binop+') (map '+name+'_g_2 [1..'+kvar+']))'
 
+   #rewritten += name+' :: '+type['domain']+' -> '+type['image']+'\n'
+   rewritten += type['src']
+   rewritten += base['src']
    rewritten += name+' '+recursion['arg']+' = let '+kvar+' = '+hop_k+' in '+s
    return rewritten
 
@@ -414,6 +435,7 @@ def rewriteSemiringCode(type,base,recursion,useScan=True,optimizeConstants=True)
 
    constTerms = [False for _ in terms]
 
+
    if debugMode:
      print 'Rewriting Code'
    s = ''
@@ -425,55 +447,83 @@ def rewriteSemiringCode(type,base,recursion,useScan=True,optimizeConstants=True)
 
    if debugMode:
       print 'Constant terms:',constTerms
+   eliminateWScan = False
+   eliminateVScan = False
+
+   if constTerms[2]:
+      if (type['image'] in numericTypes) and binopMult=='*':
+         eliminateVScan = True
+      elif (type['image'] in booleanTypes):
+         eliminateVScan = True
+   if constTerms[3]:
+      if (type['image'] in numericTypes) and binopMult=='*':
+         eliminateWScan = True
+      elif (type['image'] in booleanTypes):
+         eliminateWScan = True
+
 
    betas = [False,False]
    for t in [0,1]:
-      if (terms[2] and terms[t]) or terms[3]:
+       if terms[t]:
+      #if (terms[2] and terms[t]) or terms[3]:
          betas[t] = True
          if useScan: 
-            vArg = '_BETA_v'
-            if (constTerms[2] or (not terms[2])):
+            vArg = name+'_BETA_v'
+            if (eliminateVScan and constTerms[2]) or (not terms[2]):
                vArg = ''
-            wArg = '_BETA_w'
-            if constTerms[3] or (not terms[3]):
+            wArg = name+'_BETA_w'
+            if (eliminateWScan and constTerms[3]) or (not terms[3]):
                wArg = ''
-            s = name+'_BETA_'+str(t+1)+' '+vArg+' '+wArg+' _BETA_k _BETA_i = '
+            s = name+'_BETA_'+str(t+1)+' '+vArg+' '+wArg+' '+name+'_BETA_k '+name+'_BETA_i = '
             if terms[2] and terms[t]:
                if constTerms[2]:
                   if (type['image'] in numericTypes) and binopMult=='*':
-                     s += '(('+name+'_g_3 0)^_BETA_i)'
+                     s += '(('+name+'_g_3 0)^('+name+'_BETA_k-'+name+'_BETA_i))'+binopMult
                   elif (type['image'] in booleanTypes):
-                     s += '('+name+'_g_3 0)'
+                     s += '('+name+'_g_3 0)'+binopMult
                   else:
-                     s += '(_BETA_v!!_BETA_i)'
+                     eliminateVScan = False
+                     
+                     s += '('+name+'_BETA_v!!(fromIntegral ('+name+'_BETA_i-1)))'+binopMult
                else:
-                  s += '(_BETA_v!!_BETA_i)'
-               s += binopMult+'('+name+'_g_'+str(t+1)+' _BETA_i)'
+                  eliminateVScan = False
+                  s += '('+name+'_BETA_v!!(fromIntegral ('+name+'_BETA_i-1)))'+binopMult
+               #s += '('+name+'_g_'+str(t+1)+' '+name+'_BETA_i)'
+            s += '('+name+'_g_'+str(t+1)+' '+name+'_BETA_i)'
             if terms[3]:
+               s += binopMult
+               #if terms[2] and terms[t]:
+               #   s += binopMult
                if constTerms[3]:
                   if (type['image'] in numericTypes) and binopMult=='*':
-                     s += binopMult+'(('+name+'_g_3 0)^_BETA_i)'
+                     s += '(('+name+'_g_4 0)^('+name+'_BETA_k-'+name+'_BETA_i))'
                   elif (type['image'] in booleanTypes):
-                     s += binopMult+'('+name+'_g_4 0)'
+                     s += '('+name+'_g_4 0)'
                   else:
-                     s += binopMult+'(_BETA_w!!(_BETA_K-_BETA_i))'
+                     eliminateWScan = False
+                     s += '('+name+'_BETA_w!!(fromIntegral (('+name+'_BETA_k-'+name+'_BETA_i)-1)))'
                else:
-                  s += binopMult+'(_BETA_w!!(_BETA_K-_BETA_i))'
+                  eliminateWScan = False
+                  s += '('+name+'_BETA_w!!(fromIntegral (('+name+'_BETA_k-'+name+'_BETA_i)-1)))'
          else:
-            s = name+'_BETA_'+str(t+1)+' _BETA_k _BETA_i = '
+            s = name+'_BETA_'+str(t+1)+' '+name+'_BETA_k '+name+'_BETA_i = '
             if terms[2] and terms[t]:
-               s += '(foldr1 ('+binopMult+') (map '+name+'_g_3 (reverse [(_BETA_i+1).._BETA_k])))'
-               s += binopMult+'('+name+'_g_'+str(t+1)+' _BETA_i)'
+               s += '(foldr1 ('+binopMult+') (map '+name+'_g_3 (reverse [('+name+'_BETA_i+1)..'+name+'_BETA_k])))'+binopMult
+               #s += '('+name+'_g_'+str(t+1)+' '+name+'_BETA_i)'
+            s += '('+name+'_g_'+str(t+1)+' '+name+'_BETA_i)'
             if terms[3]:
-               s += binopMult+'(foldr1 ('+binopMult+') (map '+name+'_g_4 [(_BETA_i+1).._BETA_k]))'
+               s += binopMult
+               #if terms[2] and terms[t]:
+               #   s += binopMult
+               s += '(foldr1 ('+binopMult+') (map '+name+'_g_4 [('+name+'_BETA_i+1)..'+name+'_BETA_k]))'
          rewritten += s+'\n'
 
    if useScan:
       vArg = 'v'
-      if constTerms[2] or (not terms[2]):
+      if (eliminateVScan and constTerms[2]) or (not terms[2]):
          vArg = ''
       wArg = 'w'
-      if constTerms[3] or (not terms[3]):
+      if (eliminateWScan and constTerms[3]) or (not terms[3]):
          wArg = ''
 
       phi_1 = False
@@ -485,7 +535,7 @@ def rewriteSemiringCode(type,base,recursion,useScan=True,optimizeConstants=True)
          if terms[0] and betas[0]:
             s += binopAdd+' '
          if betas[0]:
-            s += '(foldr1 ('+binopAdd+') (map ('+name+'_BETA_1 '+vArg+' '+wArg+' k) (reverse [1..(k-1)])))'
+            s += '('+foldr1+' ('+binopAdd+') (map ('+name+'_BETA_1 '+vArg+' '+wArg+' k) (reverse [1..(k-1)])))'
          rewritten += s+'\n'
 
       phi_2 = False
@@ -493,7 +543,7 @@ def rewriteSemiringCode(type,base,recursion,useScan=True,optimizeConstants=True)
          phi_2 = True
          s = name+'_PHI_2 '+vArg+' '+wArg+' k = '
          if betas[1]:
-            s += '(foldr1 ('+binopAdd+') (map ('+name+'_BETA_2 '+vArg+' '+wArg+' k) [1..(k-1)]))'
+            s += '('+foldr1+' ('+binopAdd+') (map ('+name+'_BETA_2 '+vArg+' '+wArg+' k) [1..(k-1)]))'
          if terms[1] and betas[1]:
             s += ' '+binopAdd+' '
          if terms[1]:
@@ -503,28 +553,34 @@ def rewriteSemiringCode(type,base,recursion,useScan=True,optimizeConstants=True)
       phi_3 = False
       if terms[2]:
          phi_3 = True
-         readV1AndMult = '(v!!1)'+binopMult
+         readV1AndMult = '(v!!0)'+binopMult
          if constTerms[2]:
             if (type['image'] in numericTypes) and binopMult=='*':
-               readV1AndMult = '('+name+'_g_3 0)'+binopMult
+               readV1AndMult = '('+name+'_g_3 0)^(k-1)'+binopMult
             elif (type['image'] in booleanTypes):
                readV1AndMult = ''
+            else:
+               eliminateVScan = False
             rewritten += name+'_PHI_3 '+vArg+' '+wArg+' k = '+readV1AndMult+'('+name+'_g_3 1)\n'
          else:
-            rewritten += name+'_PHI_3 '+vArg+' '+wArg+' k = (v!!1)'+binopMult+'('+name+'_g_3 1)\n'
+            eliminateVScan = False
+            rewritten += name+'_PHI_3 '+vArg+' '+wArg+' k = (v!!0)'+binopMult+'('+name+'_g_3 1)\n'
 
       phi_4 = False
       if terms[3]:
          phi_4 = True
-         readWK1AndMult = binopMult+'(w!!(k-1))'
+         readWK1AndMult = binopMult+'(w!!(fromIntegral (k-2)))'
          if constTerms[3]:
             if (type['image'] in numericTypes) and binopMult=='*':
-               readWK1AndMult = binopMult+'('+name+'_g_4 0)'
+               readWK1AndMult = binopMult+'('+name+'_g_4 0)^(k-1)'
             elif (type['image'] in booleanTypes):
                readWK1AndMult = ''
-            rewritten += name+'_PHI_4 '+vArg+' '+wArg+' k = ('+name+'_g_4 k)'+readWK1AndMult+'\n'
+            else:
+               eliminateWScan = False
+            rewritten += name+'_PHI_4 '+vArg+' '+wArg+' k = ('+name+'_g_4 1)'+readWK1AndMult+'\n'
          else:
-            rewritten += name+'_PHI_4 '+vArg+' '+wArg+' k = ('+name+'_g_4 k)'+binopMult+'(w!!(k-1))\n'
+            eliminateWScan = False
+            rewritten += name+'_PHI_4 '+vArg+' '+wArg+' k = ('+name+'_g_4 1)'+binopMult+'(w!!(fromIntegral (k-2)))\n'
 
       kvar = 'k'
       if recursion['arg']==kvar:
@@ -532,21 +588,25 @@ def rewriteSemiringCode(type,base,recursion,useScan=True,optimizeConstants=True)
       vvar = 'v'
       if recursion['arg']==vvar:
          vvar = name+'_v'
-      if constTerms[2] or (not terms[2]):
+      if (eliminateVScan and constTerms[2]) or (not terms[2]):
          vvar = ''
       wvar = 'w'
       if recursion['arg']==wvar:
          wvar = name+'_w'
-      if constTerms[3] or (not terms[3]):
+      if (eliminateWScan and constTerms[3]) or (not terms[3]):
          wvar = ''
 
+      #rewritten += name+' :: '+type['domain']+' -> '+type['image']+'\n'
+      rewritten += type['src']
+      rewritten += base['src']
       s = name+' '+recursion['arg']+' = '
-      s += 'let '+kvar+' = '+hop_k+'\n'
-      if terms[2] and (not constTerms[2]):
-         s += ' '+vvar+' = scanr1 ('+binopMult+') (map '+name+'_g_3 (reverse [2..'+kvar+']))\n'
-      if terms[3] and (not constTerms[3]):
-         s += ' '+wvar+' = scanr1 ('+binopMult+') (map '+name+'_g_4 [2..'+kvar+'])\n'
-      s += ' in '
+      s += 'let '+kvar+' = '+hop_k
+      if terms[2] and ((not constTerms[2]) or (not eliminateVScan)):
+         s += '; '+vvar+' = scanr1 ('+binopMult+') (map '+name+'_g_3 (reverse [2..'+kvar+']))'
+
+      if terms[3]!=None and ((not constTerms[3]) or (not eliminateWScan)):
+         s += '; '+wvar+' = scanl1 ('+binopMult+') (map '+name+'_g_4 [2..'+kvar+'])'
+      s += '\n in '
       if phi_1:
          s += '('+name+'_PHI_1 '+vvar+' '+wvar+' '+kvar+')'+binopAdd
       if phi_3:
@@ -567,7 +627,7 @@ def rewriteSemiringCode(type,base,recursion,useScan=True,optimizeConstants=True)
          if terms[0] and betas[0]:
             s += binopAdd+' '
          if betas[0]:
-            s += '(foldr1 ('+binopAdd+') (map ('+name+'_BETA_1 k) (reverse [1..(k-1)])))'
+            s += '('+foldr1+' ('+binopAdd+') (map ('+name+'_BETA_1 k) (reverse [1..(k-1)])))'
          rewritten += s+'\n'
 
       phi_2 = False
@@ -575,7 +635,7 @@ def rewriteSemiringCode(type,base,recursion,useScan=True,optimizeConstants=True)
          phi_2 = True
          s = name+'_PHI_2 k = '
          if betas[1]:
-            s += '(foldr1 ('+binopAdd+') (map ('+name+'_BETA_2 k) [1..(k-1)]))'
+            s += '('+foldr1+' ('+binopAdd+') (map ('+name+'_BETA_2 k) [1..(k-1)]))'
          if terms[1] and betas[1]:
             s += ' '+binopAdd+' '
          if terms[1]:
@@ -585,17 +645,20 @@ def rewriteSemiringCode(type,base,recursion,useScan=True,optimizeConstants=True)
       phi_3 = False
       if terms[2]:
          phi_3 = True
-         rewritten += name+'_PHI_3 k = (foldr1 ('+binopMult+') (map '+name+'_g_3 (reverse [1..k])))\n'
+         rewritten += name+'_PHI_3 k = ('+foldr1+' ('+binopMult+') (map '+name+'_g_3 (reverse [1..k])))\n'
 
       phi_4 = False
       if terms[3]:
          phi_4 = True
-         rewritten += name+'_PHI_4 k = (foldr1 ('+binopMult+') (map '+name+'_g_4 [1..k]))\n'
+         rewritten += name+'_PHI_4 k = ('+foldr1+' ('+binopMult+') (map '+name+'_g_4 [1..k]))\n'
 
       kvar = 'k'
       if recursion['arg']==kvar:
          kvar = name+'_k'
 
+      #rewritten += name+' :: '+type['domain']+' -> '+type['image']+'\n'
+      rewritten += type['src']
+      rewritten += base['src']
       s = name+' '+recursion['arg']+' = '
       s += 'let '+kvar+' = '+hop_k+' in '
       if phi_1:
@@ -621,8 +684,10 @@ def rewriteCode(type,base,recursion,useScan=True,optimizeConstants=True):
       return None
 
 def hasUnsupportedConstructions(code):
-   keywords = ['let','where','case']
-   return any([ len(re.findall('[^_A-Za-z0-9]'+kw+'[^_A-Za-z0-9]', code))>0 for kw in keywords])
+   keywords = ['let','where','case','import']
+   isUnsupported = any([ len(re.findall('[^_A-Za-z0-9]'+kw+'[^_A-Za-z0-9]', code))>0 for kw in keywords])
+   isUnsupported = isUnsupported or any([ len(re.findall('^'+kw+'[^_A-Za-z0-9]', code))>0 for kw in keywords])
+   return isUnsupported
 
 def parallelize(code,useScan=True,optimizeConstants=True):
    name = None
@@ -630,57 +695,199 @@ def parallelize(code,useScan=True,optimizeConstants=True):
    base = None
    recursion = None
 
-   for line in code.split('\n'):
-      line = line.strip()
-      if hasUnsupportedConstructions(line):
-         print 'ERROR: Unsupported construction:'
-         print line
-         sys.exit(0)
+   for linesrc in code.split('\n'):
+      line = linesrc.strip()
+      assert (not hasUnsupportedConstructions(line)), 'ERROR: Unsupported construction:\n'+line.strip()
       if '::' in line and '->' in line:
          type = parseTypeDef(line)
-         if type==None:
-            sys.exit(0)
+         assert type!=None,'ERROR: Error while parsing type definition'
          name = type['name']
-         if type['domain'] not in supportedTypes:
-            print 'ERROR: unsupported domain type: '+str(type['domain'])+'. Types expected:',supportedTypes
-            sys.exit(0)
+         assert (type['domain'] in supportedTypes), 'ERROR: unsupported domain type: '+str(type['domain'])+'. Types expected:'+str(supportedTypes)
+         type['src'] = linesrc+'\n'
       elif '=' in line:
          left = line.split('=')[0].strip()
          right = line.split('=')[1].strip()
          if not name:
             name = left.strip().split()[0].strip()
-            print 'ERROR: Type for function',name,' not defined. Type inference not supported yet.'
-            sys.exit(0)
-         elif line.strip().split()[0]!=name:
-            print 'ERROR: function '+name+' mismatch with:'
-            print '>>\t',line
-            sys.exit(0)
+         assert type!=None,'ERROR: Type for function '+name+' not defined. Type inference not supported yet.'
+         assert line.strip().split()[0]==name,'ERROR: function '+name+' mismatch with:\n>>\t'+line.strip()
          numOfRecursiveCalls = countRecursiveCalls(name, right)
+         assert numOfRecursiveCalls<2,'ERROR: Multiple recursive calls to function '+name+'\n'+line.strip()
          if numOfRecursiveCalls==0:
             base = parseRecursiveBase(line)
-            if base==None:
-               sys.exit(0)
-            if base['name']!=type['name']: #sanity check
-               print 'ERROR: function '+name+' mismatch with:'
-               print '>>\t',line
-               sys.exit(0)
+            assert base!=None,'ERROR: Error while parsing base definition'
+            #sanity check
+            assert base['name']==type['name'],'ERROR: function '+name+' mismatch with:\n>>\t'+line.strip()
             baseX = base['arg']
             baseY = base['expr']
             if debugMode:
                print 'Base Arg:',baseX
                print 'Base Expr:',baseY
+            base['src'] = linesrc+'\n'
          elif numOfRecursiveCalls==1:
             recursion = parseRecursion(line)
             if recursion==None:
                sys.exit(0)
-            if recursion['name']!=type['name']: #sanity check
-               print 'ERROR: function '+name+' mismatch with:'
-               print '>>\t',line
-               sys.exit(0)
-         else:
-            print 'ERROR: Multiple recursive calls to function '+name
-            print line
-            sys.exit(0)
-   rewritten = rewriteCode(type,base,recursion,useScan,optimizeConstants)
+            #sanity check
+            assert recursion['name']==type['name'],'ERROR: function '+name+' mismatch with:\n>>\t'+line.strip()
+            recursion['src'] = linesrc+'\n'
+   rewritten += rewriteCode(type,base,recursion,useScan,optimizeConstants)
    return rewritten
+
+prologue = '''
+import Control.Parallel.Strategies
+import Control.Parallel
+import Data.List
+
+parFoldr1 _ [x] = x
+parFoldr1 mappend xs  = (ys `par` zs) `pseq` (ys `mappend` zs) where
+  len = length xs
+  (ys', zs') = splitAt (len `div` 2) xs
+  ys = parFoldr1 mappend ys'
+  zs = parFoldr1 mappend zs'
+
+'''
+
+def parallelizeFile(filename,useScan=True,optimizeConstants=True):
+   name = None
+   type = None
+   base = None
+   recursion = None
+
+   functions = {}
+
+   cachedFoldr1 = getFoldr1()
+   setFoldr1('parFoldr1')
+
+   rewritten = prologue
+
+   f = open(filename)
+   for linesrc in f:
+      line = linesrc.strip()
+      if len(line)==0:
+         rewritten += linesrc
+         continue
+      #assert (not hasUnsupportedConstructions(line)), 'ERROR: Unsupported construction:\n'+line.strip()
+      if hasUnsupportedConstructions(line):
+         if name!=None and name in functions.keys():
+            if functions[name]['type']:
+               rewritten += functions[name]['type']['src']
+            if functions[name]['base']:
+               rewritten += functions[name]['base']['src']
+            name = None
+         rewritten += linesrc
+         continue
+      if '::' in line and '->' in line:
+         type = parseTypeDef(line)
+
+         #assert type!=None,'ERROR: Error while parsing type definition'
+         if type==None:
+            if name!=None and name in functions.keys():
+               if functions[name]['type']:
+                  rewritten += functions[name]['type']['src']
+               if functions[name]['base']:
+                  rewritten += functions[name]['base']['src']
+            name = None
+            rewritten += linesrc
+            continue
+
+         if (name!=None) and name in functions.keys():
+            if functions[name]['type']:
+               rewritten += functions[name]['type']['src']
+            if functions[name]['base']:
+               rewritten += functions[name]['base']['src']
+            name = None
+         name = type['name']
+         #assert (type['domain'] in supportedTypes), 'ERROR: unsupported domain type: '+str(type['domain'])+'. Types expected:'+str(supportedTypes)
+         if type['domain'] not in supportedTypes:
+            rewritten += linesrc
+            name = None
+            continue
+         type['src'] = linesrc
+         functions[name] = {'type':type,'base':None,'recursion':None}
+         #rewritten += linesrc
+      elif '=' in line:
+         left = line.split('=')[0].strip()
+         right = line.split('=')[1].strip()
+         if not name:
+            name = left.strip().split()[0].strip()
+         #assert type!=None,'ERROR: Type for function '+name+' not defined. Type inference not supported yet.'
+         #assert line.strip().split()[0]==name,'ERROR: function '+name+' mismatch with:\n>>\t'+line.strip()
+         if name not in functions.keys():
+            rewritten += linesrc
+            name = None
+            continue
+         numOfRecursiveCalls = countRecursiveCalls(name, right)
+         #assert numOfRecursiveCalls<2,'ERROR: Multiple recursive calls to function '+name+'\n'+line.strip()
+         if numOfRecursiveCalls==0:
+            base = parseRecursiveBase(line)
+            #assert base!=None,'ERROR: Error while parsing base definition'
+            if base==None:
+               if name!=None and name in functions[name].keys():
+                  if functions[name]['type']:
+                     rewritten += functions[name]['type']['src']
+                  if functions[name]['base']:
+                     rewritten += functions[name]['base']['src']
+               rewritten += linesrc
+               name = None
+               continue
+            #sanity check
+            #assert base['name']==type['name'],'ERROR: function '+name+' mismatch with:\n>>\t'+line.strip()
+            if base['name'] not in functions.keys():
+               rewritten += linesrc
+               name = None
+               continue
+            base['src'] = linesrc
+            functions[base['name']]['base'] = base
+         elif numOfRecursiveCalls==1:
+            recursion = parseRecursion(line)
+            if recursion==None:
+               if functions[name]['type']:
+                  rewritten += functions[name]['type']['src']
+               if functions[name]['base']:
+                  rewritten += functions[name]['base']['src']
+               rewritten += linesrc
+               name = None
+               continue
+            #sanity check
+            #assert recursion['name']==type['name'],'ERROR: function '+name+' mismatch with:\n>>\t'+line.strip()
+            if recursion['name'] not in functions.keys():
+               if functions[name]['type']:
+                  rewritten += functions[name]['type']['src']
+               if functions[name]['base']:
+                  rewritten += functions[name]['base']['src']
+               rewritten += linesrc
+               name = None
+               continue
+            recursion['src'] = linesrc
+            functions[recursion['name']]['recursion'] = recursion
+            name = recursion['name']
+            rewrittenRecursion = None
+            if functions[name]['type'] and functions[name]['base']:
+               rewrittenRecursion = rewriteCode(functions[name]['type'],functions[name]['base'],functions[name]['recursion'],useScan,optimizeConstants)
+            if rewrittenRecursion:
+               rewritten += rewrittenRecursion
+               name = None
+            else:
+               if functions[name]['type']:
+                  rewritten += functions[name]['type']['src']
+               if functions[name]['base']:
+                  rewritten += functions[name]['base']['src']
+               rewritten += linesrc
+               del functions[name]
+               name = None
+               continue
+         else:
+            if name!=None and name in functions[name].keys():
+               if functions[name]['type']:
+                  rewritten += functions[name]['type']['src']
+               if functions[name]['base']:
+                  rewritten += functions[name]['base']['src']
+            rewritten += linesrc
+
+   setFoldr1(cachedFoldr1)
+   f.close()
+
+   return rewritten
+
 
