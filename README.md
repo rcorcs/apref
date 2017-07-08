@@ -17,6 +17,7 @@ f_g_1 i = [i]
 f_g_2 :: Integer -> [Integer]
 f_g_2 i = [i]
 f :: Integer -> [Integer]
+f 0 = []
 f n = let k = n
       in (parFoldr (++) (map f_g_1 (reverse [1..k]))) ++ [] ++
          (parFoldr (++) (map f_g_2 [1..k]))
