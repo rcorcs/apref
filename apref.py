@@ -906,4 +906,14 @@ def parallelizeFile(filename,useScan=True,optimizeConstants=True):
 
    return rewritten
 
+if __name__=='__main__':
+   import argparse
+
+   parser = argparse.ArgumentParser(description='Haskell Auto-Parallelizer for Recursive Functions.')
+   parser.add_argument('--scan', nargs='?', const=True, default=False, help='Use scan-based optimizations')
+   parser.add_argument('--constfold', nargs='?', const=True, default=False, help='Perform constant folding optimizations')
+   parser.add_argument('-f', '--file', type=str, nargs=1, help='Input Haskell file')
+
+   args = parser.parse_args()
+   print parallelizeFile(args.file[0], args.scan, args.constfold)
 

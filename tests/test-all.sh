@@ -8,7 +8,7 @@ testBenchmark() {
    cat $benchfile > seqf.hs
 
 
-   python ../__init__.py ${TESTDIR}/seqf.hs True True > ${TESTDIR}/parf.hs
+   python ../apref.py -f ${TESTDIR}/seqf.hs --scan --constfold > ${TESTDIR}/parf.hs
    if [ $? -ne 0 ]; then
       exit $?
    fi
