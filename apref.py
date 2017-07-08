@@ -743,13 +743,15 @@ import Control.Parallel.Strategies
 import Control.Parallel
 import Data.List
 
+'''
+
+epilogue = '''
 parFoldr1 _ [x] = x
 parFoldr1 mappend xs  = (ys `par` zs) `pseq` (ys `mappend` zs) where
   len = length xs
   (ys', zs') = splitAt (len `div` 2) xs
   ys = parFoldr1 mappend ys'
   zs = parFoldr1 mappend zs'
-
 '''
 
 def parallelizeFile(filename,useScan=True,optimizeConstants=True):
@@ -771,6 +773,7 @@ def parallelizeFile(filename,useScan=True,optimizeConstants=True):
       if len(line)==0:
          rewritten += linesrc
          continue
+      
       #assert (not hasUnsupportedConstructions(line)), 'ERROR: Unsupported construction:\n'+line.strip()
       if hasUnsupportedConstructions(line):
          if name!=None and name in functions.keys():
@@ -887,8 +890,17 @@ def parallelizeFile(filename,useScan=True,optimizeConstants=True):
                   rewritten += functions[name]['type']['src']
                if functions[name]['base']:
                   rewritten += functions[name]['base']['src']
+            name = None
             rewritten += linesrc
+      else:
+         rewritten += linesrc
+   if name!=None and name in functions[name].keys():
+      if functions[name]['type']:
+         rewritten += functions[name]['type']['src']
+      if functions[name]['base']:
+         rewritten += functions[name]['base']['src']
 
+   rewritten += epilogue
    setFoldr1(cachedFoldr1)
    f.close()
 

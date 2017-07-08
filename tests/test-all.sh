@@ -13,11 +13,11 @@ testBenchmark() {
       exit $?
    fi
 
-   echo "main = print (f 100)" >> seqf.hs
-   echo "main = print (f 100)" >> parf.hs
+   #echo "main = print (f 100)" >> seqf.hs
+   #echo "main = print (f 100)" >> parf.hs
 
    sh build.sh f
-   sh check.sh f >/dev/null
+   sh check.sh f 100 >/dev/null
    if [ $? -eq 0 ]; then
       echo 'Outputs Matching [OK]'
    else
