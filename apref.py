@@ -13,7 +13,7 @@ foldr1 = 'foldr1'
 
 numericTypes = ['Integer','Rational','Floating','RealFloat','Num','Integral','Fractional']
 booleanTypes = ['Boolean']
-supportedTypes = ['Integer']
+supportedTypes = numericTypes
 
 def setDebugMode(state):
    global debugMode
@@ -46,11 +46,11 @@ def inverse(string, left_string=None):
 def hopFunction(hop, x, base):
    if '_HOP_'+x not in re.split('[^_a-zA-Z0-9]', hop):
       if debugMode:
-         print 'h('+x+') = '+hop
-         print 'h^k('+x+') = '+base   
+         print >> sys.stderr, 'h('+x+') = '+hop
+         print >> sys.stderr, 'h^k('+x+') = '+base   
       hop_inv = inverse('_HOP_'+x+' = '+hop, x)
       if debugMode:
-         print hop_inv
+         print >> sys.stderr, hop_inv
       return (str(hop_inv).split('=')[1].strip(), '_HOP_'+x)
    return None
 
@@ -111,9 +111,9 @@ def parseTypeDef(code):
       domain = tmp[0].strip()
       image = tmp[1].strip()
       if debugMode:
-         print 'Function:',name
-         print 'Domain:',domain
-         print 'Image:',image
+         print >> sys.stderr, 'Function:',name
+         print >> sys.stderr, 'Domain:',domain
+         print >> sys.stderr, 'Image:',image
       type = {'name':name,'domain':domain,'image':image}
    return type
 
@@ -162,9 +162,9 @@ def parseRecursion(code):
       lexpr = right[:m.start(0)].strip()
       rexpr = right[endRecursiveCall:].strip()
       if debugMode:
-         print 'recursive call:',right[m.start(0):endRecursiveCall]
-         print 'lexpr:',lexpr
-         print 'rexpr:',rexpr
+         print >> sys.stderr, 'recursive call:',right[m.start(0):endRecursiveCall]
+         print >> sys.stderr, 'lexpr:',lexpr
+         print >> sys.stderr, 'rexpr:',rexpr
       hop = right[m.end(0):endRecursiveCall-1]
       if len(lexpr.strip())>0:
          ops = []
@@ -184,7 +184,7 @@ def parseRecursion(code):
                continue
             ops.append(op.strip())
          if debugMode:
-            print 'ops:',ops
+            print >> sys.stderr, 'ops:',ops
          if len(Set(ops))>2:
             print 'ERROR: Format not supported. Operators found 1:',ops
             print code
@@ -194,7 +194,7 @@ def parseRecursion(code):
             lops.append(ops[-1])
 
          if debugMode:
-            print 'lops:',set(lops)
+            print >> sys.stderr, 'lops:',set(lops)
 
          if len(lops)==2:
             g1idx = lexpr.rfind(lops[0])
@@ -214,15 +214,15 @@ def parseRecursion(code):
                   g1idx = lexpr[:g1idx-1].rfind(lops[0])
 
             if debugMode:
-               print 'g_1('+arg+') = '+lexpr[:g1idx].strip()
+               print >> sys.stderr, 'g_1('+arg+') = '+lexpr[:g1idx].strip()
             g_1 = lexpr[:g1idx].strip()
             if debugMode:
-               print 'g_3('+arg+') = '+lexpr[g1idx+len(lops[0]):-len(lops[1])].strip()
+               print >> sys.stderr, 'g_3('+arg+') = '+lexpr[g1idx+len(lops[0]):-len(lops[1])].strip()
             g_3 = lexpr[g1idx+len(lops[0]):-len(lops[1])].strip()
          else:
             g_1 = lexpr[:-len(lops[0])].strip()
             if debugMode:
-               print 'g_1('+arg+') = '+g_1
+               print >> sys.stderr, 'g_1('+arg+') = '+g_1
       if len(rexpr.strip())>0:
          ops = []
          for mop in re.finditer('[+\-\*/][+\-\*/]*', rexpr):
@@ -241,7 +241,7 @@ def parseRecursion(code):
                continue
             ops.append(op.strip())
          if debugMode:
-            print 'ops:',ops
+            print >> sys.stderr, 'ops:',ops
          if len(Set(ops))>2:
             print 'ERROR: Format not supported. Operators found 3:',ops
             print code
@@ -266,23 +266,23 @@ def parseRecursion(code):
                if ignoreop:
                   g2idx = rexpr[g2idx+1:].find(rops[1])
             if debugMode:
-               print 'g_2('+arg+') = '+rexpr[g2idx+len(rops[1]):].strip()
+               print >> sys.stderr, 'g_2('+arg+') = '+rexpr[g2idx+len(rops[1]):].strip()
             g_2 = rexpr[g2idx+len(rops[1]):].strip()
             if debugMode:
-               print 'g_4('+arg+') = '+rexpr[len(rops[0]):g2idx].strip()
+               print >> sys.stderr, 'g_4('+arg+') = '+rexpr[len(rops[0]):g2idx].strip()
             g_4 = rexpr[len(rops[0]):g2idx].strip()
          else:
             g_2 = rexpr.strip()[len(rops[0]):].strip()
             if debugMode:
-               print 'g_2('+arg+') = '+g_2
+               print >> sys.stderr, 'g_2('+arg+') = '+g_2
    if max(len(lops),len(rops))>2:
       print 'ERROR: Format not supported. Operators found 5:',ops
       print code
       return None
    if debugMode:
-      print 'g_3:',g_3
-      print 'g_4:',g_4
-      print 'lops U rops:',Set(lops).union(Set(rops))
+      print >> sys.stderr, 'g_3:',g_3
+      print >> sys.stderr, 'g_4:',g_4
+      print >> sys.stderr, 'lops U rops:',Set(lops).union(Set(rops))
 
    result = {'name':name, 'arg':arg, 'hop-expr':hop, 'algebraic-type':None, 'exprs':[],'operators':[]}
    
@@ -346,7 +346,7 @@ def isConstantFunction(func):
 
 def rewriteMonoidCode(type,base,recursion,optimizeConstants=True):
    if debugMode:
-      print 'Monoid-based recursive function'
+      print >> sys.stderr, 'Monoid-based recursive function'
    binop = recursion['operators'][0]
    name = type['name']
 
@@ -354,32 +354,32 @@ def rewriteMonoidCode(type,base,recursion,optimizeConstants=True):
 
    kComposedHop = funcVariableComposition(recursion['hop-expr'],recursion['arg'],'_HOP_k')
    if debugMode:
-      print 'k-composed hop:',str(kComposedHop)+' = '+base['arg']
+      print >> sys.stderr, 'k-composed hop:',str(kComposedHop)+' = '+base['arg']
    solvedHopComposition = inverse(base['arg']+' = '+kComposedHop, '_HOP_k')
    if debugMode:
-      print 'solved k-composed hop:',solvedHopComposition
+      print >> sys.stderr, 'solved k-composed hop:',solvedHopComposition
    #sanity check
    if str(solvedHopComposition).split('=')[0].strip()!='_HOP_k':
       return None
    hop_k = str(solvedHopComposition).split('=')[1].strip()
    if debugMode:
-      print 'hop_k:','('+hop_k+')'
+      print >> sys.stderr, 'hop_k:','('+hop_k+')'
 
    hop_inv = hopFunction(recursion['hop-expr'], recursion['arg'], base['arg'])
    if debugMode:
-      print 'hop inverse:',hop_inv
+      print >> sys.stderr, 'hop inverse:',hop_inv
 
    iComposedHopInverse = funcVariableComposition(hop_inv[0],hop_inv[1],'_HOP_i')
    if debugMode:
-      print 'i-composed hop inverse:',iComposedHopInverse
+      print >> sys.stderr, 'i-composed hop inverse:',iComposedHopInverse
    solvedHopComposition = funcSolve(iComposedHopInverse, hop_inv[1], base['arg'])
    if debugMode:
-      print 'solved i-composed hop inverse:',solvedHopComposition
+      print >> sys.stderr, 'solved i-composed hop inverse:',solvedHopComposition
 
    terms = [rewriteTerm(term,recursion['arg'],solvedHopComposition) for term in recursion['exprs']]
 
    if debugMode:
-     print 'Rewriting Code'
+     print >> sys.stderr, 'Rewriting Code'
    s = ''
    kvar = 'k'
    if recursion['arg']==kvar:
@@ -403,7 +403,7 @@ def rewriteMonoidCode(type,base,recursion,optimizeConstants=True):
 
 def rewriteSemiringCode(type,base,recursion,useScan=True,optimizeConstants=True):
    if debugMode:
-      print 'Semiring-based recursive function'
+      print >> sys.stderr, 'Semiring-based recursive function'
    binopAdd = recursion['operators'][0]
    binopMult = recursion['operators'][1]
    name = type['name']
@@ -413,27 +413,27 @@ def rewriteSemiringCode(type,base,recursion,useScan=True,optimizeConstants=True)
 
    kComposedHop = funcVariableComposition(recursion['hop-expr'],recursion['arg'],'_HOP_k')
    if debugMode:
-      print 'k-composed hop:',str(kComposedHop)+' = '+base['arg']
+      print >> sys.stderr, 'k-composed hop:',str(kComposedHop)+' = '+base['arg']
    solvedHopComposition = inverse(base['arg']+' = '+kComposedHop, '_HOP_k')
    if debugMode:
-      print 'solved k-composed hop:',solvedHopComposition
+      print >> sys.stderr, 'solved k-composed hop:',solvedHopComposition
    #sanity check
    if str(solvedHopComposition).split('=')[0].strip()!='_HOP_k':
       return None
    hop_k = str(solvedHopComposition).split('=')[1].strip()
    if debugMode:
-      print 'hop_k:','('+hop_k+')'
+      print >> sys.stderr, 'hop_k:','('+hop_k+')'
 
    hop_inv = hopFunction(recursion['hop-expr'], recursion['arg'], base['arg'])
    if debugMode:
-      print 'hop inverse:',hop_inv
+      print >> sys.stderr, 'hop inverse:',hop_inv
 
    iComposedHopInverse = funcVariableComposition(hop_inv[0],hop_inv[1],'_HOP_i')
    if debugMode:
-      print 'i-composed hop inverse:',iComposedHopInverse
+      print >> sys.stderr, 'i-composed hop inverse:',iComposedHopInverse
    solvedHopComposition = funcSolve(iComposedHopInverse, hop_inv[1], base['arg'])
    if debugMode:
-      print 'solved i-composed hop inverse:',solvedHopComposition
+      print >> sys.stderr, 'solved i-composed hop inverse:',solvedHopComposition
 
    terms = [rewriteTerm(term,recursion['arg'],solvedHopComposition) for term in recursion['exprs']]
 
@@ -441,7 +441,7 @@ def rewriteSemiringCode(type,base,recursion,useScan=True,optimizeConstants=True)
 
 
    if debugMode:
-     print 'Rewriting Code'
+     print >> sys.stderr, 'Rewriting Code'
    s = ''
    for t in xrange(len(terms)):
       if terms[t]:
@@ -450,7 +450,7 @@ def rewriteSemiringCode(type,base,recursion,useScan=True,optimizeConstants=True)
          constTerms[t] = optimizeConstants and isConstantFunction(func)
 
    if debugMode:
-      print 'Constant terms:',constTerms
+      print >> sys.stderr, 'Constant terms:',constTerms
    eliminateWScan = False
    eliminateVScan = False
 
@@ -725,8 +725,8 @@ def parallelize(code,useScan=True,optimizeConstants=True):
             baseX = base['arg']
             baseY = base['expr']
             if debugMode:
-               print 'Base Arg:',baseX
-               print 'Base Expr:',baseY
+               print >> sys.stderr, 'Base Arg:',baseX
+               print >> sys.stderr, 'Base Expr:',baseY
             base['src'] = linesrc+'\n'
          elif numOfRecursiveCalls==1:
             recursion = parseRecursion(line)
@@ -913,7 +913,8 @@ if __name__=='__main__':
    parser.add_argument('--scan', nargs='?', const=True, default=False, help='Use scan-based optimizations')
    parser.add_argument('--constfold', nargs='?', const=True, default=False, help='Perform constant folding optimizations')
    parser.add_argument('-f', '--file', type=str, nargs=1, help='Input Haskell file')
+   parser.add_argument('-d', '--debug', nargs='?', const=True, default=False, help='Activate debug mode')
 
    args = parser.parse_args()
+   setDebugMode(args.debug)
    print parallelizeFile(args.file[0], args.scan, args.constfold)
-
