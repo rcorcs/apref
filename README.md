@@ -2,6 +2,9 @@
 
 This is a source-to-source Haskell compiler that automatically identifies and rewrites recursive functions in a parallel form.
 
+[An Algebraic Framework for Parallelizing Recurrence in Functional Programming](http://dx.doi.org/10.1007/978-3-319-45279-1_10)  
+Rodrigo C. O. Rocha, Luís F. W. Góes, Fernando M. Q. Pereira
+
 ### Example
 
 Given the following sequential recursive function:
