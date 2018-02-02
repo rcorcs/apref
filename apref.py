@@ -28,7 +28,6 @@ def getFoldr1():
   return foldr1
 
 
-
 def inverse(string, left_string=None):
    string = '-' + string
    e = sympify(string.replace('=','+'))
@@ -344,6 +343,11 @@ def isConstantFunction(func):
    else:
       return False
 
+def isCommutative(type,binopAdd,binopMult=None):
+   validAdd = binopAdd in ['*', '+']
+   validMult = ((binopMult in ['*', '+']) if binopMult else True)
+   return ((type['image'] in numericTypes) and validAdd and validMult)
+
 def rewriteMonoidCode(type,base,recursion,optimizeConstants=True):
    if debugMode:
       print >> sys.stderr, 'Monoid-based recursive function'
@@ -377,6 +381,17 @@ def rewriteMonoidCode(type,base,recursion,optimizeConstants=True):
       print >> sys.stderr, 'solved i-composed hop inverse:',solvedHopComposition
 
    terms = [rewriteTerm(term,recursion['arg'],solvedHopComposition) for term in recursion['exprs']]
+
+   if debugMode:
+     print 'Terms:',terms
+   # if commutative, then reorder and reassociate terms
+   if isCommutative(type,binop):
+      if debugMode:
+         print 'Reordering terms: Commutative monoid'
+      if terms[0] and terms[1]:
+         terms = [ '('+terms[0]+binop+terms[1]+')', None]
+      if debugMode:
+         print 'Terms:',terms
 
    if debugMode:
      print >> sys.stderr, 'Rewriting Code'
@@ -437,8 +452,27 @@ def rewriteSemiringCode(type,base,recursion,useScan=True,optimizeConstants=True)
 
    terms = [rewriteTerm(term,recursion['arg'],solvedHopComposition) for term in recursion['exprs']]
 
-   constTerms = [False for _ in terms]
+   if debugMode:
+     print 'Terms:',terms
+   # if commutative, then reorder and reassociate terms
+   if isCommutative(type,binopAdd,binopMult):
+      if debugMode:
+         print 'Reordering terms: Commutative monoid'
+      term0 = terms[0]
+      term1 = terms[1]
+      term2 = terms[2]
+      term3 = terms[3]
+      if terms[0] and terms[1]:
+         term0 = '('+terms[0]+binopAdd+terms[1]+')'
+         term1 = None
+      if terms[2] and terms[3]:
+         term2 = None
+         term3 = '('+terms[2]+binopMult+terms[3]+')'
+      terms = [term0, term1, term2, term3]
+      if debugMode:
+         print 'Terms:',terms
 
+   constTerms = [False for _ in terms]
 
    if debugMode:
      print >> sys.stderr, 'Rewriting Code'
