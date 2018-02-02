@@ -10,7 +10,7 @@ Optimizations implemented:
 
 ### References
 
-[*Automatic Parallelization of Recursive Functions with Rewriting Rules*](https://doi.org/10.1016/j.scico.2018.01.004)  
+[**Automatic Parallelization of Recursive Functions with Rewriting Rules**](https://doi.org/10.1016/j.scico.2018.01.004)  
 Rodrigo C. O. Rocha, Luís F. W. Góes, Fernando M. Q. Pereira  
 Journal of Science of Computer Programming, 2018
 
