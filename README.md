@@ -6,7 +6,7 @@ Optimizations implemented:
 * Automatic parallelization
 * Constant folding
 * Reassociation of terms for commutative operations
-* Simple symbolic simplification
+* Symbolic simplification of scan operations
 
 ### References
 
