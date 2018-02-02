@@ -2,6 +2,12 @@
 
 This is a source-to-source Haskell compiler that automatically identifies and rewrites recursive functions in a parallel form.
 
+Optimizations implemented:
+* Automatic parallelization
+* Constant folding
+* Reassociation of terms for commutative operations
+* Simple symbolic simplification
+
 ### References
 
 [Automatic parallelization of recursive functions with rewriting rules](https://doi.org/10.1016/j.scico.2018.01.004)  
