@@ -4,6 +4,10 @@ This is a source-to-source Haskell compiler that automatically identifies and re
 
 ### References
 
+[Automatic parallelization of recursive functions with rewriting rules](https://doi.org/10.1016/j.scico.2018.01.004)  
+Rodrigo C. O. Rocha, Luís F. W. Góes, Fernando M. Q. Pereira  
+Journal of Science of Computer Programming, 2018
+
 [An Algebraic Framework for Parallelizing Recurrence in Functional Programming](http://dx.doi.org/10.1007/978-3-319-45279-1_10)  
 Rodrigo C. O. Rocha, Luís F. W. Góes, Fernando M. Q. Pereira  
 SBLP 2016 - Brazilian Symposium on Programming Languages
